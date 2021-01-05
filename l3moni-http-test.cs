@@ -23,64 +23,62 @@ namespace l3moni.Function // Company namespace
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", "put", "delete", Route = null)] HttpRequest req,
             ILogger log)
         {   
-            var mongoClient = SetupMongo();
-            var database = SetupDB("test", mongoClient);
-            var collection = GetCollection("l3moni",database);
-
-            var document = new BsonDocument {
-                { "id", ""},
-                { "name", "demoukkeli"},
-                { "skill", "none"}
-            };
-
-           // collection.InsertOne(document);
-
+            // Replace with ENV Variables in local.settings.json / Portal App Settings
+            var databasename = System.Environment.GetEnvironmentVariable("DEFAULT_DATABASE_NAME");
+            var collectionname = System.Environment.GetEnvironmentVariable("DEFAULT_COLLECTION_NAME");
             
+            // Setup and test MongoDB / CosmosDB connection
+            var mongoClient = SetupMongo();
+            var database = SetupDB(databasename, mongoClient);
+            var collection = GetCollection(collectionname,database);
 
-            log.LogInformation("C# HTTP trigger function processed a request.");
-
+            // Check for req headers (application/json)
             string value = req.Query["value"];
 
             string json = req.Query["json"];
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
 
+            // Converting JSON request to a usable format
             dynamic data = JsonConvert.DeserializeObject(requestBody);
 
             value = value ?? data?.value;
 
             json = json ?? data?.json;
 
+            // Log incoming request
+            log.LogInformation(requestBody);
+
+            string responseMessage = "OK";
+
             // Create
             if (req.Method == HttpMethods.Post) {
 
                 System.Diagnostics.Debug.WriteLine("HttpPost received");
                 try {
-                    log.LogInformation(InsertJson(json,collection));
+                    InsertJson(json,collection, log);
                 }
                 catch (Exception e) {
                     log.LogInformation(e.Message);
+                    responseMessage = "Http.Get Success but with error: " + e.Message;
                 }
             }
 
             // Read
             else if (req.Method == HttpMethods.Get) {
                 System.Diagnostics.Debug.WriteLine("HttpGet received");
+                responseMessage = "Http.Get Success";
             }
             // Update
             else if (req.Method == HttpMethods.Put) {
                 System.Diagnostics.Debug.WriteLine("HttpPut received");
+                responseMessage = "Http.Put Success";
             }
             // Delete
             else if (req.Method == HttpMethods.Delete) {
                 System.Diagnostics.Debug.WriteLine("HttpDelete received");
+                responseMessage = "Http.Delete Success";
             }
-
-            
-
-            string responseMessage = string.IsNullOrEmpty(value)
-                ? "Please provide a city as a value ie. ?value=Espoo"
-                : $"Weather forecast today in {value} is ";
 
             return new OkObjectResult(responseMessage);
         }
@@ -118,17 +116,19 @@ namespace l3moni.Function // Company namespace
             return database.GetCollection<BsonDocument>(collectionName);
         }
 
-        public static string InsertJson(string json, IMongoCollection<BsonDocument> collection) {
+        public static void InsertJson(string json, IMongoCollection<BsonDocument> collection, ILogger log) {
 
             BsonDocument result;
-            bool success = BsonDocument.TryParse(json, out result);
-
-            if(success) {
+            
+            // Refactor this with try catch logic
+            try {
+                bool success = BsonDocument.TryParse(json, out result);
+                if(success) {
                 collection.InsertOne(result);
-                return ("Inserted object in to: " + collection.CollectionNamespace.ToString());
+                }
             }
-            else {
-                return "JSON Parse failed";
+            catch (Exception e) {
+                log.LogError("InsertJson error: " + e.Message);
             }
         }
 
